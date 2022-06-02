@@ -1,5 +1,7 @@
 import pickle
 
+import unicodedata
+
 import src.app.utils.nltkmodule
 import nltk
 import re
@@ -10,20 +12,55 @@ from pathlib import Path
 
 from googletrans import Translator
 from textblob import TextBlob
+from collections import Counter
 from nltk import word_tokenize, bigrams, trigrams
 from nltk.util import ngrams
 from nltk.corpus import stopwords
 
 
-translator = Translator()
-
-
 class FakeNewsCatboostHandler:
     def __init__(self):
-        with open("../../pickles/preprocessor.pickle", "rb") as handler:
-            self.preprocessor = pickle.load(handler)
+        self.topics = [
+            "Educacion",
+            "Sociedad",
+            "Ciencia",
+            "Seguridad",
+            "Salud",
+            "Economia",
+            "Deportes",
+            "Política",
+            "Entretenimiento",
+            "Covid-19",
+            "Internacional",
+            "Deporte",
+            "Ambiental",
+        ]
+        self.importances = {
+            'headline_avg_subjetivity': 9.26543131054493,
+            'headline_especiales': 6.760821461305923,
+            'headline_mayusculas': 2.288598447668221,
+            'headline_numbers': 5.407225946330669,
+            'headline_palabras': 8.319235401354966,
+            'headline_palabras_avg_len': 6.042072182987105,
+            'headline_stopwords': 5.272774086006602,
+            'headline_unicas': 4.04243289873048,
+            'text_especiales': 6.129971093433766,
+            'text_mayusculas': 1.671052693444975,
+            'text_numbers': 2.7313164118359996,
+            'text_oraciones': 12.695798037380655,
+            'text_oraciones_avg_len': 8.842395576626684,
+            'text_palabras': 0.3342635475646531,
+            'text_palabras_avg_len': 5.740365609424486,
+            'text_stopwords': 3.212380005933827,
+            'text_unicas': 6.6617567062222705,
+            'topic': 4.582108583203765
+        }
+        self.stopwords = set(stopwords.words('spanish'))
+        self.translator = Translator()
         with open("../../pickles/catboost.pickle", "rb") as handler:
             self.model = pickle.load(handler)
+        with open("../../pickles/preprocessor.pickle", "rb") as handler:
+            self.preprocessor = pickle.load(handler)
 
     @staticmethod
     def __get_proporcion_mayusculas(text):
@@ -44,11 +81,10 @@ class FakeNewsCatboostHandler:
         result = re.findall(r'[^a-zA-Z0-9 ]', text)
         return len(result)
 
-    @staticmethod
-    def __get_stopword_count(text):
+    def __get_stopword_count(self, text):
         count = 0
         _split = text.lower().split()
-        stop_words_set = set(stopwords.words('spanish'))
+        stop_words_set = self.stopwords
         for word in _split:
             if word in stop_words_set:
                 count += 1
@@ -59,7 +95,7 @@ class FakeNewsCatboostHandler:
         return len(nltk.sent_tokenize(text))
 
     @staticmethod
-    def __get_palabras_unicas(self, text):
+    def __get_palabras_unicas(text):
         return len(set(text.lower().split()))
 
     @staticmethod
@@ -76,9 +112,38 @@ class FakeNewsCatboostHandler:
         average_subjectivity = np.mean([item[1] for item in textblob_sentiment])
         return average_polarity, average_subjectivity
 
+    @staticmethod
+    def __strip_accents(s):
+        if s is np.nan or s is None:
+            return ''
+        return ''.join(c for c in unicodedata.normalize('NFD', s)\
+                       if unicodedata.category(c) != 'Mn')
+
+    @staticmethod
+    def __remove_non_alphanum(s):
+        return ''.join(c for c in s if c.isalnum() or c.isspace())
+
+    def __process_string(self, s):
+        s = self.__strip_accents(s)
+        s = self.__remove_non_alphanum(s)
+        s = s.lower()
+        return s
+
+    def build_ngram(self, text, n=2, top=10):
+        ntext = self.__process_string(text)
+        all_str = ' '.join([word for word in ntext.split() if word not in self.stopwords])
+        top_ngrams = (pd.Series(ngrams(all_str.split(), n)).value_counts())[:top]
+        top_ngrams = list(top_ngrams.to_dict().items())
+        processed_ngrams = []
+        for ngram in top_ngrams:
+            _ngram = ', '.join(ngram[0])
+            _ngram = f'({_ngram})'
+            processed_ngrams.append((_ngram, ngram[1]))
+        return processed_ngrams
+
     def get_features(self, topic, headline, article):
         data = pd.DataFrame({
-            'topic': [topic],
+            'Topic': [topic],
             'headline': [headline],
             'article': [article]
         })
@@ -101,8 +166,8 @@ class FakeNewsCatboostHandler:
         data['text_oraciones'] = data['article'].apply(self.__get_sentences_count)
         data['text_oraciones_avg_len'] = data['text_oraciones'] / data['text_palabras']
 
-        data['eng_headline'] = data['headline'].apply(lambda x: translator.translate(x, src='es').text)
-        data['eng_text'] = data['article'].apply(lambda x: translator.translate(x, src='es').text)
+        data['eng_headline'] = data['headline'].apply(lambda x: self.translator.translate(x, src='es').text)
+        data['eng_text'] = data['article'].apply(lambda x: self.translator.translate(x, src='es').text)
 
         data['headline_sentiment'] = data['eng_headline'].apply(self.__get_average_sentiment)
         data['headline_avg_polarity'] = data['headline_sentiment'].apply(lambda sent: sent[0])
@@ -135,5 +200,41 @@ class FakeNewsCatboostHandler:
             'text_oraciones',
             'text_oraciones_avg_len',
         ]
-        processed_data = self.preprocessor.fit_transform(data[x_columns])
-        return self.model.predict_proba(processed_data)[:, 0]
+
+        processed_data = pd.DataFrame(self.preprocessor.transform(data[x_columns]))
+        processed_data.columns = [f'topic_{i}' for i, value in enumerate(self.topics) if i > 0] + \
+                                 [col for col in x_columns if col != 'Topic']
+        # This returns a tuple of probabilities for each class. We only need one ([0]) that corresponds to
+        # the 1 class (Fake).
+        return self.model.predict_proba(processed_data)[0].tolist()[0]
+
+    def get_feature_stats(self, data):
+        _features = [
+            'headline_palabras',
+            'headline_palabras_avg_len',
+            'headline_mayusculas',
+            'headline_numbers',
+            'headline_especiales',
+            'headline_stopwords',
+            'headline_unicas',
+            'headline_avg_subjetivity',
+            'text_palabras',
+            'text_palabras_avg_len',
+            'text_mayusculas',
+            'text_numbers',
+            'text_especiales',
+            'text_stopwords',
+            'text_unicas',
+            'text_oraciones',
+            'text_oraciones_avg_len',
+        ]
+        features = data[_features]
+        features_dict = features.to_dict()
+        for key in features_dict:
+            value = features_dict[key]
+            features_dict[key] = {
+                'value': value,
+                'importance': self.importances[key]
+            }
+
+        return features_dict

@@ -1,5 +1,6 @@
-nltk
+nltk==3.4
 flask
 catboost
 textblob
-googletrans
+googletrans==4.0.0rc1
+sklearn==1.0.2
