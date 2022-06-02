@@ -5,7 +5,8 @@ import nltk
 import re
 import numpy as np
 import pandas as pd
-
+import os
+from pathlib import Path
 
 from googletrans import Translator
 from textblob import TextBlob
@@ -19,10 +20,10 @@ translator = Translator()
 
 class FakeNewsCatboostHandler:
     def __init__(self):
-        handler = open("preprocessor.pickle", "rb")
-        self.preprocessor = pickle.load(handler)
-        handler = open("catboost.pickle", "rb")
-        self.model = pickle.load(handler)
+        with open("../../pickles/preprocessor.pickle", "rb") as handler:
+            self.preprocessor = pickle.load(handler)
+        with open("../../pickles/catboost.pickle", "rb") as handler:
+            self.model = pickle.load(handler)
 
     @staticmethod
     def __get_proporcion_mayusculas(text):
@@ -112,3 +113,27 @@ class FakeNewsCatboostHandler:
         data['text_avg_subjetivity'] = data['text_sentiment'].apply(lambda sent: sent[1])
 
         return data
+
+    def get_probability(self, data):
+        x_columns = [
+            'Topic',
+            'headline_palabras',
+            'headline_palabras_avg_len',
+            'headline_mayusculas',
+            'headline_numbers',
+            'headline_especiales',
+            'headline_stopwords',
+            'headline_unicas',
+            'headline_avg_subjetivity',
+            'text_palabras',
+            'text_palabras_avg_len',
+            'text_mayusculas',
+            'text_numbers',
+            'text_especiales',
+            'text_stopwords',
+            'text_unicas',
+            'text_oraciones',
+            'text_oraciones_avg_len',
+        ]
+        processed_data = self.preprocessor.fit_transform(data[x_columns])
+        return self.model.predict_proba(processed_data)[:, 0]
