@@ -2,8 +2,8 @@ from flask import Flask
 from flask.globals import request
 from flask_cors import CORS
 
-from src.app.controllers.fake_news_catboost_handler import FakeNewsCatboostHandler
-from src.app.controllers.fake_news_rnn_handler import FakeNewsRnnHandler
+from app.controllers.fake_news_catboost_handler import FakeNewsCatboostHandler
+from app.controllers.fake_news_rnn_handler import FakeNewsRnnHandler
 
 app = Flask(__name__)
 CORS(app)

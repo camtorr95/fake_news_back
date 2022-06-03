@@ -4,6 +4,6 @@ flask-cors
 catboost
 textblob
 googletrans==4.0.0rc1
-sklearn==1.0.2
+scikit-learn==1.0.2
 tensorflow
 gensim
