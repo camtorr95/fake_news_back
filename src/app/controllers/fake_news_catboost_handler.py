@@ -35,26 +35,6 @@ class FakeNewsCatboostHandler:
             "Deporte",
             "Ambiental",
         ]
-        self.importances = {
-            'headline_avg_subjetivity': 9.26543131054493,
-            'headline_especiales': 6.760821461305923,
-            'headline_mayusculas': 2.288598447668221,
-            'headline_numbers': 5.407225946330669,
-            'headline_palabras': 8.319235401354966,
-            'headline_palabras_avg_len': 6.042072182987105,
-            'headline_stopwords': 5.272774086006602,
-            'headline_unicas': 4.04243289873048,
-            'text_especiales': 6.129971093433766,
-            'text_mayusculas': 1.671052693444975,
-            'text_numbers': 2.7313164118359996,
-            'text_oraciones': 12.695798037380655,
-            'text_oraciones_avg_len': 8.842395576626684,
-            'text_palabras': 0.3342635475646531,
-            'text_palabras_avg_len': 5.740365609424486,
-            'text_stopwords': 3.212380005933827,
-            'text_unicas': 6.6617567062222705,
-            'topic': 4.582108583203765
-        }
         self.stopwords = set(stopwords.words('spanish'))
         self.translator = Translator()
         with open("../../pickles/catboost.pickle", "rb") as handler:
@@ -206,9 +186,10 @@ class FakeNewsCatboostHandler:
                                  [col for col in x_columns if col != 'Topic']
         # This returns a tuple of probabilities for each class. We only need one ([0]) that corresponds to
         # the 1 class (Fake).
-        return self.model.predict_proba(processed_data)[0].tolist()[0]
+        return self.model.predict_proba(processed_data)[0].tolist()[1]
+        # return f"({', '.join(map(str, self.model.predict_proba(processed_data)[0].tolist()))})"
 
-    def get_feature_stats(self, data):
+    def get_feature_values(self, data):
         _features = [
             'headline_palabras',
             'headline_palabras_avg_len',
@@ -232,9 +213,6 @@ class FakeNewsCatboostHandler:
         features_dict = features.to_dict()
         for key in features_dict:
             value = features_dict[key]
-            features_dict[key] = {
-                'value': value,
-                'importance': self.importances[key]
-            }
+            features_dict[key] = value[0]
 
         return features_dict

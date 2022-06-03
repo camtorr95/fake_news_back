@@ -1,11 +1,15 @@
 from flask import Flask
 from flask.globals import request
+from flask_cors import CORS
 
 from src.app.controllers.fake_news_catboost_handler import FakeNewsCatboostHandler
+from src.app.controllers.fake_news_rnn_handler import FakeNewsRnnHandler
 
 app = Flask(__name__)
+CORS(app)
 
 catboost_handler = FakeNewsCatboostHandler()
+rnn_handler = FakeNewsRnnHandler()
 
 
 @app.route('/fake_news/predict', methods=['POST'])
@@ -27,7 +31,8 @@ def predict():
     data = catboost_handler.get_features(topic, headline, article)
     return {
         'probability': {
-            'catboost': catboost_handler.get_probability(data)
+            'catboost': catboost_handler.get_probability(data),
+            'rnn': rnn_handler.predict(article)
         },
         'sentiment': {
             'headline': {
@@ -43,7 +48,7 @@ def predict():
             'text_bigrams': catboost_handler.build_ngram(article),
             'text_trigrams': catboost_handler.build_ngram(article, n=3)
         },
-        'variables': catboost_handler.get_feature_stats(data)
+        'variables': catboost_handler.get_feature_values(data)
     }
 
 
